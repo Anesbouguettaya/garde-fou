@@ -1,0 +1,833 @@
+<!doctype html>
+<html lang="fr">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Garde-fou</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="Un réseau de neurones pilote un robot mobile ; un filtre de sécurité garantit mathématiquement qu'il ne touche jamais rien. Essayez de le faire percuter un pilier.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=B612+Mono:wght@400;700&family=Barlow+Condensed:wght@600;700&family=Barlow:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+<style>
+/* Atelier de robotique : sol en résine, ruban de sécurité jaune et noir, couleurs de sécurité ISO 7010
+   (bleu = action imposée par le garde-fou, rouge = contact, vert = but). L'arène ouvre la page. */
+:root {
+  --fond: #E9EDEB;
+  --surface: #F6F8F7;
+  --sol: #DCE2DF;
+  --grille: rgba(22, 27, 29, 0.09);
+  --encre: #15191B;
+  --encre-2: #50595B;
+  --filet: #C6CDCA;
+  --pilier: #A3ABA8;
+  --pilier-bord: #6E7774;
+  --jaune: #F4B400;
+  --ruban: #17191A;
+  --bleu: #1A5DAB;
+  --bleu-pale: #DCE7F5;
+  --rouge: #C62828;
+  --rouge-pale: #F8DEDC;
+  --vert: #1B7A4B;
+  --sur-bleu: #FFFFFF;
+  --f-titre: "Barlow Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
+  --f-texte: "Barlow", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --f-donnees: "B612 Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --fond: #101416; --surface: #161C1F; --sol: #1A2124; --grille: rgba(231, 236, 234, 0.07);
+    --encre: #E6EBE9; --encre-2: #9AA5A4; --filet: #2B3538; --pilier: #4D575A; --pilier-bord: #75807F;
+    --jaune: #F4B400; --ruban: #0B0D0E; --bleu: #5C9DEB; --bleu-pale: #15283F; --rouge: #FF6B61;
+    --rouge-pale: #3A1714; --vert: #4CC38A; --sur-bleu: #0B1220; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --fond: #101416; --surface: #161C1F; --sol: #1A2124; --grille: rgba(231, 236, 234, 0.07);
+  --encre: #E6EBE9; --encre-2: #9AA5A4; --filet: #2B3538; --pilier: #4D575A; --pilier-bord: #75807F;
+  --jaune: #F4B400; --ruban: #0B0D0E; --bleu: #5C9DEB; --bleu-pale: #15283F; --rouge: #FF6B61;
+  --rouge-pale: #3A1714; --vert: #4CC38A; --sur-bleu: #0B1220; color-scheme: dark;
+}
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body { margin: 0; background: var(--fond); color: var(--encre); font: 400 1.0625rem/1.55 var(--f-texte); }
+a { color: var(--bleu); text-underline-offset: 0.18em; }
+button, input { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--bleu); outline-offset: 2px; }
+h1, h2, h3 { text-wrap: balance; }
+
+.page {
+  max-width: 76rem; margin: 0 auto; display: grid; gap: clamp(2.5rem, 6vw, 4.5rem);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: clamp(1.25rem, 4vw, 2.5rem) 2rem;
+}
+.etiquette {
+  margin: 0; font: 700 0.75rem/1.3 var(--f-donnees); letter-spacing: 0.1em; text-transform: uppercase; color: var(--encre-2);
+}
+
+/* En-tête */
+.entete { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.5rem 2rem; align-items: end; }
+.entete__texte { min-width: 0; display: grid; gap: 0.5rem; }
+h1 {
+  margin: 0; font: 700 clamp(3.25rem, 10vw, 6rem)/0.86 var(--f-titre); letter-spacing: 0.01em; text-transform: uppercase;
+}
+.chapeau { margin: 0.25rem 0 0; max-width: 40rem; font-size: clamp(1.1rem, 2.2vw, 1.3rem); line-height: 1.45; }
+.defi {
+  justify-self: end; margin: 0; display: flex; gap: 0.6rem; align-items: center; max-width: 21rem;
+  font-weight: 600; line-height: 1.35;
+}
+.defi::before {
+  content: ""; flex: none; width: 2.1rem; height: 2.1rem; border-radius: 3px;
+  background: repeating-linear-gradient(-45deg, var(--jaune) 0 6px, var(--ruban) 6px 12px);
+}
+
+/* Banc : arène + panneau */
+.banc { display: grid; grid-template-columns: minmax(0, 2.1fr) minmax(17rem, 1fr); gap: clamp(1rem, 2.5vw, 1.75rem); align-items: start; }
+.arene { position: relative; min-width: 0; }
+.arene canvas {
+  display: block; width: 100%; aspect-ratio: 8.28 / 5.28; border-radius: 6px; background: var(--sol);
+  touch-action: none; cursor: crosshair;
+}
+.arene__etat {
+  position: absolute; top: 4.8%; left: 3.4%; display: inline-flex; align-items: center; gap: 0.45rem;
+  padding: 0.3rem 0.6rem; border-radius: 4px; background: var(--bleu); color: var(--sur-bleu);
+  font: 700 0.72rem/1 var(--f-donnees); letter-spacing: 0.08em; text-transform: uppercase; pointer-events: none;
+}
+.arene__etat::before { content: ""; width: 0.5rem; height: 0.5rem; border-radius: 50%; background: currentColor; }
+.arene__etat.coupe { background: var(--rouge); color: #fff; }
+.arene__lancer {
+  position: absolute; inset: 0; margin: auto; width: fit-content; height: fit-content; padding: 0.8rem 1.2rem;
+  border: 0; border-radius: 6px; background: var(--encre); color: var(--fond); font-weight: 600; cursor: pointer;
+}
+
+.panneau { display: grid; gap: 1.1rem; min-width: 0; }
+.groupe { display: grid; gap: 0.45rem; margin: 0; padding: 0; border: 0; min-width: 0; }
+.groupe legend { padding: 0; margin-bottom: 0.45rem; }
+.segments { display: flex; padding: 3px; gap: 3px; border-radius: 7px; background: var(--surface); border: 1px solid var(--filet); }
+.segments label { flex: 1 1 0; position: relative; min-width: 0; }
+.segments input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.segments span {
+  display: grid; place-items: center; min-height: 2.5rem; padding: 0.35rem 0.4rem; border-radius: 5px;
+  text-align: center; font-weight: 600; font-size: 0.9375rem; line-height: 1.15; color: var(--encre-2);
+}
+.segments input:checked + span { background: var(--encre); color: var(--fond); }
+.segments input:focus-visible + span { outline: 2px solid var(--bleu); outline-offset: 1px; }
+.segments input:disabled + span { opacity: 0.45; }
+
+.bascule {
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem; width: 100%;
+  padding: 0.7rem 0.8rem; border: 1px solid var(--filet); border-radius: 7px; background: var(--surface); cursor: pointer; text-align: left;
+}
+.bascule__texte { display: grid; gap: 0.1rem; }
+.bascule__titre { font: 700 1.35rem/1 var(--f-titre); text-transform: uppercase; letter-spacing: 0.02em; }
+.bascule__etat { font: 700 0.75rem var(--f-donnees); letter-spacing: 0.08em; text-transform: uppercase; color: var(--bleu); }
+.bascule__piste {
+  flex: none; position: relative; width: 3.6rem; height: 2rem; border-radius: 999px; background: var(--bleu);
+  transition: background-color 0.2s;
+}
+.bascule__piste::after {
+  content: ""; position: absolute; top: 0.25rem; left: 1.85rem; width: 1.5rem; height: 1.5rem; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3); transition: left 0.2s;
+}
+.bascule[aria-checked="false"] .bascule__piste { background: repeating-linear-gradient(-45deg, var(--jaune) 0 7px, var(--ruban) 7px 14px); }
+.bascule[aria-checked="false"] .bascule__piste::after { left: 0.25rem; }
+.bascule[aria-checked="false"] .bascule__etat { color: var(--rouge); }
+
+.actions { display: grid; grid-template-columns: auto auto minmax(0, 1fr); gap: 0.5rem; align-items: center; }
+.bouton {
+  min-height: 2.5rem; padding: 0.4rem 0.85rem; border: 1px solid var(--filet); border-radius: 7px;
+  background: var(--surface); font-weight: 600; cursor: pointer; white-space: nowrap;
+}
+.bouton:hover, .bascule:hover { border-color: var(--encre-2); }
+.actions .segments span { min-height: 2.1rem; font-family: var(--f-donnees); font-size: 0.8125rem; }
+
+.compteurs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; margin: 0; background: var(--filet); border: 1px solid var(--filet); border-radius: 7px; overflow: hidden; }
+.compteur { display: grid; gap: 0.15rem; padding: 0.65rem 0.8rem; background: var(--surface); }
+.compteur dt { font-size: 0.8125rem; color: var(--encre-2); line-height: 1.25; }
+.compteur dd { margin: 0; font: 700 1.6rem/1.1 var(--f-donnees); font-variant-numeric: tabular-nums; }
+.compteur dd small { font-size: 0.55em; font-weight: 400; color: var(--encre-2); }
+.compteur--evites dd { color: var(--bleu); }
+.compteur--collisions dd.vu { color: var(--rouge); }
+.compteur--marge dd.serre { color: var(--rouge); }
+
+.commande { margin: 0; font: 0.8125rem/1.5 var(--f-donnees); color: var(--encre-2); font-variant-numeric: tabular-nums; }
+.commande b { color: var(--encre); font-weight: 700; white-space: nowrap; }
+.commande .corrige { color: var(--bleu); }
+.consigne { margin: 0; padding: 0.7rem 0.8rem; border-radius: 7px; background: var(--bleu-pale); font-size: 0.9375rem; line-height: 1.45; }
+.legende { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.35rem; font-size: 0.8125rem; color: var(--encre-2); }
+.legende li { display: grid; grid-template-columns: 1.8rem minmax(0, 1fr); gap: 0.5rem; align-items: center; }
+.legende svg { width: 1.8rem; height: 0.9rem; overflow: visible; }
+
+/* Explication */
+.section { display: grid; gap: 1.5rem; min-width: 0; }
+.section__tete { display: grid; gap: 0.5rem; max-width: 44rem; }
+h2 { margin: 0; font: 700 clamp(2rem, 4.5vw, 2.8rem)/1 var(--f-titre); text-transform: uppercase; letter-spacing: 0.01em; }
+.section__tete p:not(.etiquette) { margin: 0; color: var(--encre-2); }
+.etapes { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(1rem, 3vw, 2rem); counter-reset: etape; }
+.etapes li { display: grid; gap: 0.6rem; align-content: start; min-width: 0; padding-top: 0.9rem; border-top: 3px solid var(--encre); counter-increment: etape; }
+.etapes li::before { content: "0" counter(etape); font: 700 0.8125rem var(--f-donnees); color: var(--encre-2); }
+.etapes h3 { margin: 0; font: 700 1.6rem/1.05 var(--f-titre); text-transform: uppercase; letter-spacing: 0.01em; }
+.etapes p { margin: 0; }
+.formule {
+  margin: 0; padding: 0.7rem 0.8rem; border-radius: 6px; background: var(--surface); border: 1px solid var(--filet);
+  font: 0.8125rem/1.75 var(--f-donnees); overflow-x: auto; white-space: nowrap;
+}
+.formule var { font-style: normal; }
+.formule .accent { color: var(--bleu); font-weight: 700; }
+
+/* Banc d'essai */
+.tableau { overflow-x: auto; border: 1px solid var(--filet); border-radius: 8px; background: var(--surface); }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.tableau table { min-width: 40rem; }
+th, td { padding: 0.7rem 0.9rem; text-align: right; border-bottom: 1px solid var(--filet); white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; white-space: normal; }
+thead th { font: 600 0.8125rem/1.3 var(--f-texte); color: var(--encre-2); vertical-align: bottom; }
+thead tr:first-child th { font: 700 0.75rem var(--f-donnees); letter-spacing: 0.08em; text-transform: uppercase; color: var(--encre); border-bottom: 0; padding-bottom: 0; text-align: left; }
+tbody td { font: 0.9375rem var(--f-donnees); }
+tbody td:first-child { font: 600 1rem/1.3 var(--f-texte); }
+tbody td:first-child small { display: block; font-weight: 400; font-size: 0.8125rem; color: var(--encre-2); }
+tbody tr:last-child td { border-bottom: 0; }
+.separe { border-left: 1px solid var(--filet); }
+.zero { color: var(--vert); font-weight: 700; }
+.mauvais { color: var(--rouge); }
+.note { margin: 0; font-size: 0.875rem; color: var(--encre-2); max-width: 52rem; }
+.cartes-resultats { display: none; gap: 0.75rem; }
+.carte-resultat { display: grid; gap: 0.5rem; padding: 0.85rem 0.9rem; border: 1px solid var(--filet); border-radius: 8px; background: var(--surface); }
+.carte-resultat h3 { margin: 0; font: 600 1.05rem/1.3 var(--f-texte); }
+.carte-resultat h3 small { display: block; font-weight: 400; font-size: 0.8125rem; color: var(--encre-2); }
+.carte-resultat th, .carte-resultat td { padding: 0.4rem 0 0.4rem 0.9rem; border-bottom: 1px solid var(--filet); }
+.carte-resultat th:first-child { padding-left: 0; }
+.carte-resultat thead th:not(:first-child), .carte-resultat td { width: 5.2rem; }
+.carte-resultat tr:last-child th, .carte-resultat tr:last-child td { border-bottom: 0; }
+.carte-resultat thead th { padding-top: 0; font: 700 0.6875rem var(--f-donnees); letter-spacing: 0.06em; text-transform: uppercase; color: var(--encre-2); }
+.carte-resultat tbody th { text-align: left; font: 400 0.875rem var(--f-texte); color: var(--encre-2); }
+.carte-resultat td { font: 0.9375rem var(--f-donnees); }
+
+.pied { display: grid; gap: 0.4rem; padding-top: 1.25rem; border-top: 1px solid var(--filet); font-size: 0.875rem; color: var(--encre-2); }
+.pied p { margin: 0; }
+
+@media (max-width: 960px) {
+  .banc { grid-template-columns: minmax(0, 1fr); }
+  .panneau { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+  .panneau > .groupe:first-child, .bascule, .actions { grid-column: 1 / -1; }
+}
+@media (max-width: 720px) {
+  .arene__etat { top: 5.5%; left: 4.2%; padding: 0.2rem 0.4rem; font-size: 0.6rem; }
+  .entete { grid-template-columns: minmax(0, 1fr); }
+  .defi { justify-self: start; }
+  .panneau { grid-template-columns: minmax(0, 1fr); }
+  .etapes { grid-template-columns: minmax(0, 1fr); }
+  .tableau { display: none; }
+  .cartes-resultats { display: grid; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bascule__piste, .bascule__piste::after { transition: none; }
+}
+</style>
+
+<div class="page">
+  <header class="entete">
+    <div class="entete__texte">
+      <p class="etiquette">Robotique · IA · sûreté</p>
+      <h1>Garde-fou</h1>
+      <p class="chapeau">Un réseau de neurones pilote le robot. Le garde-fou corrige ses commandes juste assez pour qu'il ne touche jamais rien, et le prouve.</p>
+    </div>
+    <p class="defi">Prenez les commandes et essayez de lui faire percuter un pilier.</p>
+  </header>
+
+  <section class="banc" aria-label="Démo interactive">
+    <div class="arene">
+      <canvas id="arene" tabindex="0" role="img" aria-label="Arène vue de dessus : un robot, huit piliers et un but"></canvas>
+      <p class="arene__etat" id="badge" aria-hidden="true">Garde-fou actif</p>
+      <button class="arene__lancer" id="lancer" type="button" hidden>Lancer la simulation</button>
+    </div>
+
+    <div class="panneau">
+      <fieldset class="groupe">
+        <legend class="etiquette">Pilote</legend>
+        <div class="segments">
+          <label><input type="radio" name="pilote" id="pilote-reseau" value="reseau" checked><span>Réseau de neurones</span></label>
+          <label><input type="radio" name="pilote" id="pilote-naif" value="naif"><span>Pilote naïf</span></label>
+          <label><input type="radio" name="pilote" id="pilote-vous" value="vous"><span>Vous</span></label>
+        </div>
+      </fieldset>
+
+      <button class="bascule" id="bascule" type="button" role="switch" aria-checked="true">
+        <span class="bascule__texte"><span class="bascule__titre">Garde-fou</span><span class="bascule__etat" id="bascule-etat">Actif</span></span>
+        <span class="bascule__piste" aria-hidden="true"></span>
+      </button>
+
+      <div class="actions">
+        <button class="bouton" id="pause" type="button">Pause</button>
+        <button class="bouton" id="nouvelle" type="button">Nouvelle scène</button>
+        <fieldset class="groupe">
+          <legend class="etiquette" hidden>Vitesse</legend>
+          <div class="segments" role="presentation">
+            <label><input type="radio" name="vitesse" id="vitesse-1" value="1" aria-label="Vitesse réelle"><span>×1</span></label>
+            <label><input type="radio" name="vitesse" id="vitesse-2" value="2" aria-label="Vitesse doublée" checked><span>×2</span></label>
+            <label><input type="radio" name="vitesse" id="vitesse-4" value="4" aria-label="Vitesse quadruplée"><span>×4</span></label>
+          </div>
+        </fieldset>
+      </div>
+
+      <dl class="compteurs">
+        <div class="compteur"><dt>Buts atteints</dt><dd id="n-buts">0</dd></div>
+        <div class="compteur compteur--evites"><dt>Chocs évités</dt><dd id="n-evites">0</dd></div>
+        <div class="compteur compteur--collisions"><dt>Collisions</dt><dd id="n-collisions">0</dd></div>
+        <div class="compteur compteur--marge"><dt>Marge actuelle</dt><dd id="marge">–</dd></div>
+      </dl>
+
+      <p class="commande" id="commande" aria-live="off">Commande proposée <b>–</b> · appliquée <b>–</b></p>
+      <p class="consigne" id="consigne"></p>
+
+      <ul class="legende">
+        <li><svg viewBox="0 0 28 14" aria-hidden="true"><line x1="1" y1="7" x2="27" y2="7" stroke="var(--encre-2)" stroke-width="2" stroke-dasharray="4 3"/></svg>Vitesse proposée par le pilote</li>
+        <li><svg viewBox="0 0 28 14" aria-hidden="true"><line x1="1" y1="7" x2="27" y2="7" stroke="var(--bleu)" stroke-width="3"/></svg>Vitesse appliquée après le garde-fou</li>
+        <li><svg viewBox="0 0 28 14" aria-hidden="true"><line x1="1" y1="7" x2="27" y2="7" stroke="var(--jaune)" stroke-width="4"/><line x1="1" y1="7" x2="27" y2="7" stroke="var(--ruban)" stroke-width="4" stroke-dasharray="4 4"/></svg>Limite que le centre du robot ne franchit jamais</li>
+        <li><svg viewBox="0 0 28 14" aria-hidden="true"><circle cx="8" cy="7" r="2.5" fill="var(--rouge)"/><circle cx="20" cy="7" r="2.5" fill="var(--rouge)"/></svg>Impacts du lidar (24 faisceaux)</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="titre-principe">
+    <div class="section__tete">
+      <p class="etiquette">Principe</p>
+      <h2 id="titre-principe">Comment ça marche</h2>
+    </div>
+    <ol class="etapes">
+      <li>
+        <h3>Le pilote propose</h3>
+        <p>Un petit réseau de neurones (27 entrées, 32 neurones) choisit une vitesse 20 fois par seconde, à partir de son lidar et de la direction du but. Il a appris en imitant un planificateur qui, lui, connaît la carte (DAgger), sans garde-fou.</p>
+        <p id="constat-reseau">Sans garde-fou, il atteint son but dans <b id="chiffre-atteint">–</b> des cas, mais percute un obstacle dans <b id="chiffre-collision">–</b>.</p>
+      </li>
+      <li>
+        <h3>Le garde-fou corrige</h3>
+        <p>Pour chaque obstacle, on mesure la place libre <var>h</var>(<var>p</var>) = ‖<var>p</var> − <var>o</var>‖² − ρ², où ρ additionne le rayon du pilier, celui du robot et 2 cm de distance de sécurité. Le garde-fou cherche la vitesse <var>u</var> la plus proche de la proposition qui respecte, pour chaque obstacle :</p>
+        <p class="formule">2 (<var>p</var> − <var>o</var>) · <var>u</var> ≥ −(γ / Δt) · <var>h</var>(<var>p</var>)</p>
+        <p>En deux dimensions, la solution exacte se trouve parmi quelques candidats : il suffit de tous les essayer.</p>
+      </li>
+      <li>
+        <h3>Pourquoi c'est garanti</h3>
+        <p>Au pas suivant, la place libre devient :</p>
+        <p class="formule"><var>h</var>(<var>p</var> + Δt <var>u</var>)<br>= <var>h</var>(<var>p</var>) + 2Δt (<var>p</var> − <var>o</var>) · <var>u</var> + <span class="accent">Δt² ‖<var>u</var>‖²</span><br>≥ (1 − γ) · <var>h</var>(<var>p</var>) ≥ 0</p>
+        <p>Le dernier terme est un carré : il ne peut qu'aider. La place libre ne passe donc jamais sous zéro. Et rester sur place respecte toujours toutes les contraintes : le garde-fou a toujours une réponse.</p>
+      </li>
+    </ol>
+  </section>
+
+  <section class="section" id="banc-essai" aria-labelledby="titre-chiffres">
+    <div class="section__tete">
+      <p class="etiquette">Banc d'essai</p>
+      <h2 id="titre-chiffres">Les chiffres</h2>
+      <p id="chiffres-intro">Chaque pilote est testé sur les mêmes scènes, jamais vues pendant l'entraînement, avec et sans garde-fou.</p>
+    </div>
+    <div class="tableau">
+      <table>
+        <thead>
+          <tr><th></th><th colspan="2" class="separe">Sans garde-fou</th><th colspan="3" class="separe">Avec garde-fou</th></tr>
+          <tr><th scope="col">Pilote</th><th scope="col" class="separe">But atteint</th><th scope="col">Collision</th>
+            <th scope="col" class="separe">But atteint</th><th scope="col">Collision</th><th scope="col">Commandes corrigées</th></tr>
+        </thead>
+        <tbody id="resultats"></tbody>
+      </table>
+    </div>
+    <div class="cartes-resultats" id="cartes-resultats"></div>
+    <p class="note" id="chiffres-note"></p>
+  </section>
+
+  <footer class="pied">
+    <p id="lien-code">Code source, tests et banc d'essai : Python, numpy et JavaScript, vérifiés à chaque commit.</p>
+    <p>Projet construit avec l'aide d'un assistant IA. Simulation pédagogique : robot omnidirectionnel commandé en vitesse, piliers fixes et connus.</p>
+  </footer>
+</div>
+
+<script src="garde_fou.js"></script>
+<script src="politique.js"></script>
+<script src="resultats.js"></script>
+<script>
+(function () {
+  "use strict";
+  const gf = window.GardeFou;
+  const poids = window.POLITIQUE || null;
+  const resultats = window.RESULTATS || null;
+  const toile = document.getElementById("arene");
+  const ctx = toile.getContext("2d");
+  const $ = (id) => document.getElementById(id);
+  const BORD = 0.14;               // m : épaisseur du ruban autour de l'arène
+  const SCENE_INITIALE = 42;       // le réseau seul y percute un pilier ; avec le garde-fou, il passe
+  const pourcent = new Intl.NumberFormat("fr-FR", { style: "percent", maximumFractionDigits: 1 });
+  const decimal = new Intl.NumberFormat("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  const etat = {
+    graine: SCENE_INITIALE, piliers: [], p: [0, 0], but: [0, 0], hasard: Math.random,
+    pilote: poids ? "reseau" : "naif", gardeFou: true, vitesse: 2, pause: false,
+    proposee: [0, 0], appliquee: [0, 0], actives: [], trace: [],
+    buts: 0, evites: 0, collisions: 0, danger: false, contact: 0, pasDepuisBut: 0,
+    cible: null, clavier: new Set(), eclatBut: 0,
+  };
+
+  const CONSIGNES = {
+    reseau: "Le réseau ne voit que son lidar (24 faisceaux) et la direction de son but. Touchez l'arène pour déplacer le but, puis coupez le garde-fou pour comparer.",
+    naif: "Le pilote naïf fonce tout droit vers le but, à travers les piliers s'il le faut. Touchez l'arène pour déplacer le but.",
+    vous: "Pilotez avec la souris, le doigt ou les flèches du clavier. Foncez sur un pilier : le garde-fou ne vous laissera pas le toucher.",
+  };
+
+  // ------------------------------------------------------------ simulation
+
+  function nouvelleScene(graine) {
+    etat.graine = graine === undefined ? (Math.random() * 4294967296) >>> 0 : graine;
+    const s = gf.scene(etat.graine);
+    Object.assign(etat, { piliers: s.piliers, p: s.depart, but: s.but, hasard: s.hasard,
+      trace: [], actives: [], proposee: [0, 0], appliquee: [0, 0], contact: 0, danger: false, pasDepuisBut: 0 });
+  }
+
+  function nouveauBut() {
+    etat.but = gf.pointLibre(etat.piliers, etat.hasard, etat.p, 3);
+    etat.pasDepuisBut = 0;
+  }
+
+  function directionClavier() {
+    let x = 0, y = 0;
+    for (const touche of etat.clavier) { x += touche[0]; y += touche[1]; }
+    const n = Math.hypot(x, y);
+    return n ? [gf.V_MAX * x / n, gf.V_MAX * y / n] : null;
+  }
+
+  function commandeDuPilote() {
+    if (etat.pilote === "reseau") return gf.reseau(poids, gf.observation(etat.piliers, etat.p, etat.but));
+    if (etat.pilote === "naif") return gf.glouton(etat.p, etat.but);
+    const clavier = directionClavier();
+    if (clavier) return clavier;
+    if (!etat.cible) return [0, 0];
+    const vx = etat.cible[0] - etat.p[0], vy = etat.cible[1] - etat.p[1], d = Math.hypot(vx, vy);
+    const f = gf.V_MAX * Math.min(1, d / 0.3) / Math.max(d, 1e-9);
+    return [vx * f, vy * f];
+  }
+
+  function pas() {
+    if (etat.contact > 0) {
+      etat.contact -= gf.DT;
+      if (etat.contact <= 0) {
+        etat.p = gf.pointLibre(etat.piliers, etat.hasard);
+        etat.trace = [];
+        if (Math.hypot(etat.p[0] - etat.but[0], etat.p[1] - etat.but[1]) < 3) nouveauBut();
+      }
+      return;
+    }
+    const u = commandeDuPilote();
+    const v = etat.gardeFou ? gf.filtrer(etat.piliers, etat.p, u) : u;
+    const corrigee = Math.hypot(v[0] - u[0], v[1] - u[1]) > 1e-9;
+    etat.proposee = u;
+    etat.appliquee = v;
+
+    // Choc évité : la vitesse proposée aurait mis le robot en contact dès le pas suivant (50 ms).
+    const danger = etat.gardeFou && gf.marge(etat.piliers, [etat.p[0] + gf.DT * u[0], etat.p[1] + gf.DT * u[1]]) < 0;
+    if (danger && !etat.danger) etat.evites += 1;
+    etat.danger = danger;
+
+    etat.actives = [];
+    if (corrigee) {
+      const { a, b } = gf.contraintes(etat.piliers, etat.p);
+      a.forEach((ai, i) => { if (ai[0] * v[0] + ai[1] * v[1] - b[i] < 1e-6) etat.actives.push(i); });
+    }
+
+    etat.p = [etat.p[0] + gf.DT * v[0], etat.p[1] + gf.DT * v[1]];
+    etat.trace.push(etat.p);
+    if (etat.trace.length > 70) etat.trace.shift();
+
+    if (gf.marge(etat.piliers, etat.p) < 0) {
+      etat.collisions += 1;
+      etat.contact = 1.0;
+    } else if (Math.hypot(etat.p[0] - etat.but[0], etat.p[1] - etat.but[1]) < gf.RAYON_BUT) {
+      etat.buts += 1;
+      etat.eclatBut = 0.6;
+      nouveauBut();
+    } else if (++etat.pasDepuisBut > 15 / gf.DT) {
+      nouveauBut();                     // bloqué depuis 15 s : on change de but
+    }
+  }
+
+  // ---------------------------------------------------------------- dessin
+
+  let couleurs = {};
+  function lireCouleurs() {
+    const style = getComputedStyle(document.documentElement);
+    for (const nom of ["sol", "grille", "encre", "encre-2", "pilier", "pilier-bord", "jaune", "ruban", "bleu", "rouge", "vert", "fond"]) {
+      couleurs[nom] = style.getPropertyValue("--" + nom).trim();
+    }
+    motifRuban = null;
+  }
+
+  let motifRuban = null;
+  function ruban(dpr) {
+    if (motifRuban) return motifRuban;
+    const t = Math.round(12 * dpr), c = document.createElement("canvas");
+    c.width = c.height = t;
+    const g = c.getContext("2d");
+    g.fillStyle = couleurs.jaune; g.fillRect(0, 0, t, t);
+    g.fillStyle = couleurs.ruban;
+    g.beginPath(); g.moveTo(0, 0); g.lineTo(t / 2, 0); g.lineTo(0, t / 2); g.closePath(); g.fill();
+    g.beginPath(); g.moveTo(t, 0); g.lineTo(t, t / 2); g.lineTo(t / 2, t); g.lineTo(0, t); g.closePath(); g.fill();
+    motifRuban = ctx.createPattern(c, "repeat");
+    return motifRuban;
+  }
+
+  function dimensionner() {
+    const dpr = window.devicePixelRatio || 1, l = toile.clientWidth;
+    const largeur = Math.round(l * dpr), hauteur = Math.round(l * dpr * (gf.HAUTEUR + 2 * BORD) / (gf.LARGEUR + 2 * BORD));
+    if (toile.width !== largeur || toile.height !== hauteur) { toile.width = largeur; toile.height = hauteur; motifRuban = null; }
+  }
+
+  function fleche(X, Y, s, depuis, vitesse, couleur, largeur, pointille) {
+    const longueur = 0.8;               // une vitesse de 1 m/s est dessinée sur 80 cm
+    const n = Math.hypot(vitesse[0], vitesse[1]);
+    if (n < 0.02) return;
+    const x0 = X(depuis[0]), y0 = Y(depuis[1]);
+    const x1 = X(depuis[0] + vitesse[0] * longueur), y1 = Y(depuis[1] + vitesse[1] * longueur);
+    const angle = Math.atan2(y1 - y0, x1 - x0), pointe = Math.min(0.12 * s, 0.4 * Math.hypot(x1 - x0, y1 - y0));
+    ctx.save();
+    ctx.strokeStyle = ctx.fillStyle = couleur;
+    ctx.lineWidth = largeur;
+    ctx.lineCap = "round";
+    if (pointille) ctx.setLineDash([0.05 * s, 0.04 * s]);
+    ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1 - Math.cos(angle) * pointe * 0.6, y1 - Math.sin(angle) * pointe * 0.6); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x1 - pointe * Math.cos(angle - 0.45), y1 - pointe * Math.sin(angle - 0.45));
+    ctx.lineTo(x1 - pointe * Math.cos(angle + 0.45), y1 - pointe * Math.sin(angle + 0.45));
+    ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+
+  function dessiner() {
+    dimensionner();
+    const c = couleurs, dpr = window.devicePixelRatio || 1;
+    const w = toile.width, h = toile.height, s = w / (gf.LARGEUR + 2 * BORD);
+    const X = (x) => (x + BORD) * s, Y = (y) => (gf.HAUTEUR + BORD - y) * s;
+    const R = gf.RAYON_ROBOT, L = gf.RAYON_ROBOT + gf.DISTANCE_SECURITE;   // L : limite pour le centre du robot
+
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = c.sol; ctx.fillRect(0, 0, w, h);
+
+    // grille de 1 m
+    ctx.strokeStyle = c.grille; ctx.lineWidth = Math.max(1, dpr);
+    ctx.beginPath();
+    for (let x = 1; x < gf.LARGEUR; x++) { ctx.moveTo(X(x), Y(0)); ctx.lineTo(X(x), Y(gf.HAUTEUR)); }
+    for (let y = 1; y < gf.HAUTEUR; y++) { ctx.moveTo(X(0), Y(y)); ctx.lineTo(X(gf.LARGEUR), Y(y)); }
+    ctx.stroke();
+
+    // murs : ruban de sécurité, et limite pour le centre du robot
+    ctx.save();
+    ctx.fillStyle = ruban(dpr);
+    ctx.beginPath(); ctx.rect(0, 0, w, h); ctx.rect(X(0), Y(gf.HAUTEUR), gf.LARGEUR * s, gf.HAUTEUR * s);
+    ctx.fill("evenodd");
+    ctx.restore();
+    const mursActifs = etat.actives.filter((i) => i >= etat.piliers.length).map((i) => i - etat.piliers.length);
+    ctx.save();
+    ctx.lineWidth = 2 * dpr;
+    ctx.strokeStyle = c.jaune; ctx.globalAlpha = 0.55;
+    ctx.setLineDash([0.08 * s, 0.08 * s]);
+    ctx.strokeRect(X(L), Y(gf.HAUTEUR - L), (gf.LARGEUR - 2 * L) * s, (gf.HAUTEUR - 2 * L) * s);
+    ctx.restore();
+    if (mursActifs.length) {
+      ctx.save(); ctx.strokeStyle = c.bleu; ctx.lineWidth = 3 * dpr;
+      const segments = [[L, L, L, gf.HAUTEUR - L], [gf.LARGEUR - L, L, gf.LARGEUR - L, gf.HAUTEUR - L],
+        [L, L, gf.LARGEUR - L, L], [L, gf.HAUTEUR - L, gf.LARGEUR - L, gf.HAUTEUR - L]];
+      ctx.beginPath();
+      for (const i of mursActifs) { const [x0, y0, x1, y1] = segments[i]; ctx.moveTo(X(x0), Y(y0)); ctx.lineTo(X(x1), Y(y1)); }
+      ctx.stroke(); ctx.restore();
+    }
+
+    // piliers et leur ruban au sol
+    etat.piliers.forEach(([x, y, r], i) => {
+      const actif = etat.actives.includes(i);
+      ctx.save();
+      ctx.lineWidth = 3.2 * dpr;
+      ctx.beginPath(); ctx.arc(X(x), Y(y), (r + L) * s, 0, 2 * Math.PI);
+      if (actif) {
+        ctx.strokeStyle = c.bleu; ctx.lineWidth = 4 * dpr; ctx.stroke();
+      } else {
+        ctx.strokeStyle = c.jaune; ctx.stroke();
+        ctx.setLineDash([0.07 * s, 0.07 * s]); ctx.strokeStyle = c.ruban; ctx.stroke();
+      }
+      ctx.restore();
+      ctx.beginPath(); ctx.arc(X(x), Y(y), r * s, 0, 2 * Math.PI);
+      ctx.fillStyle = c.pilier; ctx.fill();
+      ctx.lineWidth = 1.5 * dpr; ctx.strokeStyle = c["pilier-bord"]; ctx.stroke();
+    });
+
+    // but
+    const bx = X(etat.but[0]), by = Y(etat.but[1]);
+    ctx.save();
+    ctx.strokeStyle = ctx.fillStyle = c.vert;
+    ctx.lineWidth = 2.5 * dpr;
+    ctx.beginPath(); ctx.arc(bx, by, gf.RAYON_BUT * s, 0, 2 * Math.PI); ctx.stroke();
+    ctx.beginPath(); ctx.arc(bx, by, 0.07 * s, 0, 2 * Math.PI); ctx.fill();
+    if (etat.eclatBut > 0) {
+      ctx.globalAlpha = etat.eclatBut / 0.6;
+      ctx.beginPath(); ctx.arc(bx, by, (gf.RAYON_BUT + (0.6 - etat.eclatBut)) * s, 0, 2 * Math.PI); ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    ctx.font = `700 ${11 * dpr}px "B612 Mono", ui-monospace, monospace`;
+    ctx.textAlign = "center";
+    ctx.fillText("BUT", bx, by - (gf.RAYON_BUT + 0.08) * s);
+    ctx.restore();
+
+    // trace des 3,5 dernières secondes
+    if (etat.trace.length > 1) {
+      ctx.save();
+      ctx.strokeStyle = etat.gardeFou ? c.bleu : c["encre-2"];
+      ctx.globalAlpha = 0.35; ctx.lineWidth = 2 * dpr; ctx.lineJoin = "round";
+      ctx.beginPath();
+      etat.trace.forEach(([x, y], k) => (k ? ctx.lineTo(X(x), Y(y)) : ctx.moveTo(X(x), Y(y))));
+      ctx.stroke(); ctx.restore();
+    }
+
+    // lidar
+    const mesures = gf.lidar(etat.piliers, etat.p);
+    ctx.save();
+    ctx.strokeStyle = c.encre; ctx.globalAlpha = 0.1; ctx.lineWidth = Math.max(1, dpr);
+    ctx.beginPath();
+    mesures.forEach((t, k) => {
+      const [dx, dy] = gf.DIRECTIONS[k];
+      ctx.moveTo(X(etat.p[0]), Y(etat.p[1])); ctx.lineTo(X(etat.p[0] + t * dx), Y(etat.p[1] + t * dy));
+    });
+    ctx.stroke();
+    ctx.globalAlpha = 0.9; ctx.fillStyle = c.rouge;
+    mesures.forEach((t, k) => {
+      if (t >= gf.PORTEE) return;
+      const [dx, dy] = gf.DIRECTIONS[k];
+      ctx.beginPath(); ctx.arc(X(etat.p[0] + t * dx), Y(etat.p[1] + t * dy), 2.2 * dpr, 0, 2 * Math.PI); ctx.fill();
+    });
+    ctx.restore();
+
+    // robot
+    const rx = X(etat.p[0]), ry = Y(etat.p[1]);
+    const intervention = Math.hypot(etat.appliquee[0] - etat.proposee[0], etat.appliquee[1] - etat.proposee[1]);
+    if (etat.gardeFou && intervention > 1e-6 && etat.contact <= 0) {
+      ctx.save();
+      ctx.fillStyle = c.bleu; ctx.globalAlpha = 0.12 + 0.2 * Math.min(1, intervention);
+      ctx.beginPath(); ctx.arc(rx, ry, (R + 0.13) * s, 0, 2 * Math.PI); ctx.fill();
+      ctx.globalAlpha = 0.9; ctx.strokeStyle = c.bleu; ctx.lineWidth = 2 * dpr;
+      ctx.beginPath(); ctx.arc(rx, ry, (R + 0.13) * s, 0, 2 * Math.PI); ctx.stroke();
+      ctx.restore();
+    }
+    const enContact = etat.contact > 0;
+    if (enContact) {
+      ctx.save(); ctx.strokeStyle = c.rouge; ctx.lineWidth = 3 * dpr; ctx.globalAlpha = Math.min(1, etat.contact);
+      ctx.beginPath(); ctx.arc(rx, ry, (R + 0.1 + (1 - etat.contact) * 0.5) * s, 0, 2 * Math.PI); ctx.stroke(); ctx.restore();
+    }
+    ctx.beginPath(); ctx.arc(rx, ry, R * s, 0, 2 * Math.PI);
+    ctx.fillStyle = enContact ? c.rouge : c.jaune; ctx.fill();
+    ctx.lineWidth = 2 * dpr; ctx.strokeStyle = c.ruban; ctx.stroke();
+    ctx.beginPath(); ctx.arc(rx, ry, R * 0.62 * s, 0, 2 * Math.PI);
+    ctx.lineWidth = 1.2 * dpr; ctx.stroke();
+    ctx.beginPath(); ctx.arc(rx, ry, 0.06 * s, 0, 2 * Math.PI); ctx.fillStyle = c.ruban; ctx.fill();
+
+    if (!enContact) {
+      fleche(X, Y, s, etat.p, etat.proposee, c["encre-2"], 2 * dpr, true);
+      fleche(X, Y, s, etat.p, etat.appliquee, c.bleu, 3.2 * dpr, false);
+    } else {
+      ctx.save();
+      ctx.font = `700 ${13 * dpr}px "B612 Mono", ui-monospace, monospace`;
+      ctx.textAlign = "center"; ctx.fillStyle = c.rouge;
+      ctx.fillText("CONTACT", rx, ry - (R + 0.22) * s);
+      ctx.restore();
+    }
+
+    // cible du pilote humain
+    if (etat.pilote === "vous" && etat.cible && !directionClavier()) {
+      ctx.save(); ctx.strokeStyle = c.encre; ctx.globalAlpha = 0.6; ctx.lineWidth = 1.5 * dpr;
+      const [cx, cy] = [X(etat.cible[0]), Y(etat.cible[1])], t = 0.1 * s;
+      ctx.beginPath(); ctx.moveTo(cx - t, cy); ctx.lineTo(cx + t, cy); ctx.moveTo(cx, cy - t); ctx.lineTo(cx, cy + t); ctx.stroke();
+      ctx.restore();
+    }
+
+    // échelle
+    ctx.save();
+    ctx.fillStyle = ctx.strokeStyle = c["encre-2"];
+    ctx.lineWidth = 2 * dpr;
+    const ex = X(gf.LARGEUR - 0.25), ey = Y(0.28);
+    ctx.beginPath(); ctx.moveTo(ex - s, ey); ctx.lineTo(ex, ey);
+    ctx.moveTo(ex - s, ey - 4 * dpr); ctx.lineTo(ex - s, ey + 4 * dpr); ctx.moveTo(ex, ey - 4 * dpr); ctx.lineTo(ex, ey + 4 * dpr);
+    ctx.stroke();
+    ctx.font = `${10 * dpr}px "B612 Mono", ui-monospace, monospace`;
+    ctx.textAlign = "center"; ctx.fillText("1 m", ex - s / 2, ey - 7 * dpr);
+    ctx.restore();
+  }
+
+  // -------------------------------------------------------------- panneau
+
+  let dernierPanneau = 0;
+  function mettreAJourPanneau(maintenant) {
+    if (maintenant - dernierPanneau < 100) return;
+    dernierPanneau = maintenant;
+    $("n-buts").textContent = etat.buts;
+    $("n-evites").textContent = etat.evites;
+    $("n-collisions").textContent = etat.collisions;
+    $("n-collisions").classList.toggle("vu", etat.collisions > 0);
+    const m = gf.marge(etat.piliers, etat.p);
+    $("marge").innerHTML = `${m < 0 ? "contact" : Math.round(m * 100)}<small>${m < 0 ? "" : " cm"}</small>`;
+    $("marge").classList.toggle("serre", m < 0.02);
+    const np = Math.hypot(...etat.proposee), na = Math.hypot(...etat.appliquee);
+    const corrigee = Math.hypot(etat.appliquee[0] - etat.proposee[0], etat.appliquee[1] - etat.proposee[1]) > 1e-6;
+    $("commande").innerHTML = `Vitesse proposée <b>${decimal.format(np)} m/s</b> · appliquée <b class="${corrigee ? "corrige" : ""}">${decimal.format(na)} m/s</b>`;
+  }
+
+  function appliquerBascule() {
+    $("bascule").setAttribute("aria-checked", String(etat.gardeFou));
+    $("bascule-etat").textContent = etat.gardeFou ? "Actif" : "Coupé";
+    $("badge").textContent = etat.gardeFou ? "Garde-fou actif" : "Garde-fou coupé";
+    $("badge").classList.toggle("coupe", !etat.gardeFou);
+  }
+
+  function choisirPilote(pilote) {
+    etat.pilote = pilote;
+    etat.cible = null;
+    etat.clavier.clear();
+    $("consigne").textContent = CONSIGNES[pilote];
+    $("pilote-" + pilote).checked = true;
+    toile.style.cursor = pilote === "vous" ? "none" : "crosshair";
+  }
+
+  // ---------------------------------------------------------- interactions
+
+  function versMonde(evenement) {
+    const rect = toile.getBoundingClientRect(), s = rect.width / (gf.LARGEUR + 2 * BORD);
+    return [(evenement.clientX - rect.left) / s - BORD, gf.HAUTEUR + BORD - (evenement.clientY - rect.top) / s];
+  }
+
+  function deplacerBut(q) {
+    const libre = q[0] > gf.RAYON_ROBOT + 0.1 && q[0] < gf.LARGEUR - gf.RAYON_ROBOT - 0.1 &&
+      q[1] > gf.RAYON_ROBOT + 0.1 && q[1] < gf.HAUTEUR - gf.RAYON_ROBOT - 0.1 &&
+      etat.piliers.every(([x, y, r]) => Math.hypot(q[0] - x, q[1] - y) >= r + gf.RAYON_ROBOT + 0.05);
+    if (libre) { etat.but = q; etat.pasDepuisBut = 0; }
+  }
+
+  toile.addEventListener("pointerdown", (e) => {
+    const q = versMonde(e);
+    if (etat.pilote === "vous") { etat.cible = q; toile.setPointerCapture(e.pointerId); }
+    else deplacerBut(q);
+  });
+  toile.addEventListener("pointermove", (e) => {
+    if (etat.pilote === "vous" && (e.pointerType === "mouse" || e.buttons)) etat.cible = versMonde(e);
+  });
+  toile.addEventListener("pointerleave", (e) => { if (e.pointerType === "mouse") etat.cible = null; });
+  toile.addEventListener("pointerup", (e) => { if (e.pointerType !== "mouse") etat.cible = null; });
+  toile.addEventListener("pointercancel", () => { etat.cible = null; });
+
+  const TOUCHES = {
+    ArrowUp: [0, 1], ArrowDown: [0, -1], ArrowLeft: [-1, 0], ArrowRight: [1, 0],
+    z: [0, 1], w: [0, 1], s: [0, -1], q: [-1, 0], a: [-1, 0], d: [1, 0],
+  };
+  window.addEventListener("keydown", (e) => {
+    const direction = TOUCHES[e.key.length === 1 ? e.key.toLowerCase() : e.key];
+    if (!direction || etat.pilote !== "vous") return;
+    const focus = document.activeElement;
+    if (focus && focus !== document.body && focus !== toile) return;
+    e.preventDefault();
+    etat.clavier.add(direction);
+  });
+  window.addEventListener("keyup", (e) => {
+    const direction = TOUCHES[e.key.length === 1 ? e.key.toLowerCase() : e.key];
+    if (direction) etat.clavier.delete(direction);
+  });
+  window.addEventListener("blur", () => etat.clavier.clear());
+
+  document.querySelectorAll('input[name="pilote"]').forEach((entree) => entree.addEventListener("change", () => {
+    choisirPilote(entree.value);
+    if (entree.value === "vous") toile.focus({ preventScroll: true });
+  }));
+  document.querySelectorAll('input[name="vitesse"]').forEach((entree) => entree.addEventListener("change", () => {
+    etat.vitesse = Number(entree.value);
+  }));
+  $("bascule").addEventListener("click", () => { etat.gardeFou = !etat.gardeFou; appliquerBascule(); });
+  $("nouvelle").addEventListener("click", () => nouvelleScene());
+  function basculerPause(pause, avecBouton = false) {
+    etat.pause = pause;
+    $("pause").textContent = pause ? "Reprendre" : "Pause";
+    $("lancer").hidden = !(pause && avecBouton);
+  }
+  $("pause").addEventListener("click", () => basculerPause(!etat.pause));
+  $("lancer").addEventListener("click", () => basculerPause(false));
+
+  // ---------------------------------------------------------- banc d'essai
+
+  function afficherResultats() {
+    if (!resultats) { $("banc-essai").hidden = true; return; }
+    const ligne = (r) => {
+      const cellule = (valeur, mauvais) => `<td class="${valeur === 0 ? "zero" : mauvais ? "mauvais" : ""}">${pourcent.format(valeur)}</td>`;
+      return `<tr><td>${r.nom}<small>${r.description}</small></td>` +
+        `<td class="separe">${pourcent.format(r.sans.atteint)}</td>${cellule(r.sans.collision, true)}` +
+        `<td class="separe">${pourcent.format(r.avec.atteint)}</td>${cellule(r.avec.collision, true)}` +
+        `<td>${pourcent.format(r.avec.corriges)}</td></tr>`;
+    };
+    $("resultats").innerHTML = resultats.pilotes.map(ligne).join("");
+    const carte = (r) => {
+      const valeur = (x, mauvais) => `<td class="${x === 0 ? "zero" : mauvais ? "mauvais" : ""}">${pourcent.format(x)}</td>`;
+      return `<article class="carte-resultat"><h3>${r.nom}<small>${r.description}</small></h3><table>` +
+        `<thead><tr><th></th><th scope="col">Seul</th><th scope="col">Garde-fou</th></tr></thead><tbody>` +
+        `<tr><th scope="row">But atteint</th><td>${pourcent.format(r.sans.atteint)}</td><td>${pourcent.format(r.avec.atteint)}</td></tr>` +
+        `<tr><th scope="row">Collision</th>${valeur(r.sans.collision, true)}${valeur(r.avec.collision, true)}</tr>` +
+        `<tr><th scope="row">Commandes corrigées</th><td>–</td><td>${pourcent.format(r.avec.corriges)}</td></tr>` +
+        `</tbody></table></article>`;
+    };
+    $("cartes-resultats").innerHTML = resultats.pilotes.map(carte).join("");
+    $("chiffres-intro").textContent = `Chaque pilote est testé sur les mêmes ${resultats.scenes.toLocaleString("fr-FR")} scènes, jamais vues pendant l'entraînement, avec et sans garde-fou, ${resultats.duree_max_s} secondes au plus par scène.`;
+    $("chiffres-note").textContent = `« Commandes corrigées » : part des pas de 50 ms où le garde-fou a modifié la vitesse proposée. ` +
+      `Avec le garde-fou, le robot n'est jamais passé à moins de ${decimal.format(resultats.marge_min_cm)} cm d'un obstacle en ${resultats.pas_avec_garde_fou.toLocaleString("fr-FR")} pas simulés (distance de sécurité : ${resultats.distance_securite_cm} cm). ` +
+      `Chiffres recalculés par l'intégration continue le ${new Date(resultats.date).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}.`;
+    const reseau = resultats.pilotes.find((r) => r.cle === "reseau");
+    if (reseau) {
+      $("chiffre-atteint").textContent = pourcent.format(reseau.sans.atteint);
+      $("chiffre-collision").textContent = pourcent.format(reseau.sans.collision);
+    }
+  }
+
+  function lienVersLeCode() {
+    if (!location.hostname.endsWith(".github.io")) return;
+    const utilisateur = location.hostname.split(".")[0], depot = location.pathname.split("/").filter(Boolean)[0];
+    if (!depot) return;
+    const url = `https://github.com/${utilisateur}/${depot}`;
+    $("lien-code").innerHTML = `Code source, tests et banc d'essai : <a href="${url}">${url.replace("https://", "")}</a>. Python, numpy et JavaScript, vérifiés à chaque commit.`;
+  }
+
+  // ---------------------------------------------------------------- boucle
+
+  let precedent = performance.now(), reserve = 0;
+  function boucle(maintenant) {
+    const ecoule = Math.min(0.1, (maintenant - precedent) / 1000);
+    precedent = maintenant;
+    if (!etat.pause) {
+      reserve += ecoule * etat.vitesse;
+      while (reserve >= gf.DT) { pas(); reserve -= gf.DT; }
+      etat.eclatBut = Math.max(0, etat.eclatBut - ecoule);
+    }
+    dessiner();
+    mettreAJourPanneau(maintenant);
+    requestAnimationFrame(boucle);
+  }
+
+  lireCouleurs();
+  window.matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", lireCouleurs);
+  new MutationObserver(lireCouleurs).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => dessiner());
+
+  if (!poids) {
+    $("pilote-reseau").disabled = true;
+    $("constat-reseau").hidden = true;
+  }
+  nouvelleScene(SCENE_INITIALE);
+  choisirPilote(etat.pilote);
+  appliquerBascule();
+  afficherResultats();
+  lienVersLeCode();
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) basculerPause(true, true);
+  requestAnimationFrame(boucle);
+
+  // Accès pour les captures et les tests de la page.
+  window.demo = { etat, pas, dessiner, nouvelleScene, choisirPilote,
+    basculer(actif) { etat.gardeFou = actif; appliquerBascule(); }, pause: basculerPause };
+})();
+</script>
